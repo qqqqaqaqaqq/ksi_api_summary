@@ -4,10 +4,10 @@
 .env
 
 appkey=*****<br>
-appsecret==*****<br>
+appsecret=*****<br>
 
-CANO==*****<br>
-ACNT_PRDT_CD==*****<br>
+CANO=*****<br>
+ACNT_PRDT_CD=*****<br>
 
 --- 
 
