@@ -36,6 +36,10 @@ from app.models.cancleorder import RequestHeader as CancleRequestHeader
 from app.models.cancleorder import RequestBody as CancleRequestBody
 from app.models.cancleorder import ResponseBody as CancleResponseBody
 
+from app.models.current_balance_by_execution import RequestHeader as CBERequestHeader
+from app.models.current_balance_by_execution import RequestQueryParam as CBERequestQueryParam
+from app.models.current_balance_by_execution import ResponseBody as CBEResponseBody
+
 # 개발
 import os
 import json
@@ -87,7 +91,10 @@ class KSI_API():
     def login(self):
         if self.access_token:
             if self.expired_check():
-                return
+                return {
+                    "status": 200,
+                    "data": "Access token is still valid"
+                }
             
         url = self.domain + "/oauth2/tokenP"
 
@@ -163,7 +170,7 @@ class KSI_API():
             traceback.print_exc()
 
     # ==================
-    # == 트레이드 조회 ===
+    # == 해외 주식 잔고 ==
     # ==================
     def get_trade_info(self):
         if not self.access_token:
@@ -200,7 +207,53 @@ class KSI_API():
             body = res.json()
             response_data = TradeResponseBody(**body)
 
-            response_data.output1
+            return {
+                "status": res.status_code,
+                "data": response_data
+            } 
+            
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+
+    # ==================
+    # == 결제 기준 잔고 ==
+    # ==================
+    def current_balance_by_execution(self):
+        if not self.access_token:
+            self.login()
+
+        if not self.expired_check():
+            self.logout()
+            time.sleep(2)
+            self.login()
+  
+        url = self.domain + "/uapi/overseas-stock/v1/trading/inquire-present-balance"
+
+        headers = CBERequestHeader(
+            content_type="application/json; charset=utf-8",
+            authorization = f"Bearer {self.access_token}",
+            appkey=self.appkey,
+            appsecret=self.appsecret,
+            tr_id="CTRP6504R",
+            custtype="P"
+        )
+
+        params = CBERequestQueryParam(
+            CANO=self.CANO,
+            ACNT_PRDT_CD=self.ACNT_PRDT_CD,
+            WCRC_FRCR_DVSN_CD="02",
+            NATN_CD="000",
+            TR_MKET_CD="00",
+            INQR_DVSN_CD = "01"
+        )
+
+        try:
+            res = requests.get(url=url, params=asdict(params), headers=asdict(headers), timeout=10)
+            
+            body = res.json()
+            response_data = CBEResponseBody(**body)
+            
             return {
                 "status": res.status_code,
                 "data": response_data
@@ -343,7 +396,7 @@ class KSI_API():
             res = requests.get(url=url, params=asdict(params), headers=asdict(headers), timeout=10)
             
             body = res.json()
-
+            
             response_data = OrderBookResponseBody(**body)
             return {
                 "status": res.status_code,
@@ -383,18 +436,21 @@ class KSI_API():
             ACNT_PRDT_CD=self.ACNT_PRDT_CD,
             OVRS_EXCG_CD=OVRS_EXCG_CD,
             PDNO=PDNO,
-            ORD_QTY=ORD_QTY,
-            OVRS_ORD_UNPR=OVRS_ORD_UNPR,
-            SLL_TYPE="00" if order_type=="TTTT1002U" else "",
+            ORD_QTY=str(ORD_QTY),
+            OVRS_ORD_UNPR=str(OVRS_ORD_UNPR),
+            SLL_TYPE="00" if order_type=="TTTT1006U" else "",
             ORD_DVSN="00",
+            ORD_SVR_DVSN_CD="0"
         )
 
         try:
             res = requests.post(url=url, headers=asdict(headers), json=asdict(data), timeout=10)
             
             body = res.json()
-
+ 
             response_data = OrderResponseBody(**body)
+
+            
             return {
                 "status": res.status_code,
                 "data": response_data
