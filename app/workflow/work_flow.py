@@ -79,7 +79,7 @@ def work_flow():
 
         # EXCD = value.get("ovrs_excg_cd")
         EXCD = "NASD"
-        order_type:ComResponseBody = "TTTT1002U"
+        order_type = "TTTT1002U"
         uuid:ComResponseBody = order(
             order_type=order_type, 
             ksi_api=ksi_api,
@@ -88,6 +88,8 @@ def work_flow():
             askbid=orderbook_data.get("askbid"),
             last=orderbook_data.get("last")
         )
+
+        print(uuid)
 
         # 로그 아웃
         # ksi_logout = ksi_function.ksi_logout(ksi_api=ksi_api)
