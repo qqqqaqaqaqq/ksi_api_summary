@@ -1,5 +1,19 @@
 # Ksi API Documnents Command File
 
+# Update
+- work_flow
+- ksi command Mixed
+  - app.services.api_setup : 한줄 커맨드
+  - app.services.orderbook_check : 오더북 상단 비드 2개 하단 ask 2개 반환
+  - app.services.summary_ticker : 현재 티커 요약, USD,KRW는 예금액만
+  - app.services.order_service : ask, bid 기준 매수 현재가 대비 위험 스프레드 (현재가와 오더북 차이가 1% 차이시 오더 금지)
+
+- 내부 성공 
+  - status = 0 
+- 외부 api 성공
+  - http_status = 0
+  - 없으면 None
+ 
 # 필수 파일
 .env
 

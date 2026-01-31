@@ -40,6 +40,8 @@ from app.models.current_balance_by_execution import RequestHeader as CBERequestH
 from app.models.current_balance_by_execution import RequestQueryParam as CBERequestQueryParam
 from app.models.current_balance_by_execution import ResponseBody as CBEResponseBody
 
+from app.models.commonResponse import ResponseBody as ComResponseBody
+
 # 개발
 import os
 import json
@@ -48,17 +50,30 @@ class KSI_API():
     def __init__(self, appkey:str, appsecret:str, CANO:str, ACNT_PRDT_CD:str):
         # 개발
         self.path = "./db.json"
+
+        default_data = {
+            "access_token": "",
+            "access_token_token_expired": ""
+        }
+
         if not os.path.exists(self.path):
             print("json 파일이 없어서 새로 생성합니다.")
-            default_data = {
-                "access_token": "",
-                "access_token_token_expired": ""
-            }
             with open(self.path, "w", encoding="utf-8") as f:
                 json.dump(default_data, f, ensure_ascii=False, indent=4)
-        
-        with open(self.path, "r", encoding="utf-8") as f:
-            data:dict = json.load(f)
+
+        try:
+            if os.path.getsize(self.path) == 0:
+                raise ValueError("JSON 파일이 비어 있음")
+
+            with open(self.path, "r", encoding="utf-8") as f:
+                data: dict = json.load(f)
+
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"JSON 초기화 발생: {e}")
+            data = default_data.copy()
+
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
 
         self.domain:str = "https://openapi.koreainvestment.com:9443"
         self.appkey:str = appkey
@@ -91,10 +106,12 @@ class KSI_API():
     def login(self):
         if self.access_token:
             if self.expired_check():
-                return {
-                    "status": 200,
-                    "data": "Access token is still valid"
-                }
+                return ComResponseBody(
+                    status=0,
+                    http_status=200,
+                    message="ALREADY_LOGGED_IN",
+                    data=None
+                )
             
         url = self.domain + "/oauth2/tokenP"
 
@@ -122,14 +139,23 @@ class KSI_API():
                     "access_token": response_data.access_token,
                     "access_token_token_expired": response_data.access_token_token_expired,
                 }, f, ensure_ascii=False, indent=4)
-                
-            return {
-                "status": res.status_code,
-                "data": res.text
-            }
+
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="LOGIN_SUCCEEDED",
+                data=res.text
+            )
+                        
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""                 
             traceback.print_exc()
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"LOGIN_EXCEPTION: {str(e)} | {body_str}",
+                data=None
+            )            
 
     # ==================
     # ==== 로그 아웃 ====
@@ -138,10 +164,12 @@ class KSI_API():
         url = self.domain + "/oauth2/revokeP"
 
         if not self.access_token:
-            return {
-                "code": 401,
-                "message": "Access token is missing"
-            }
+            return ComResponseBody(
+                status=0,
+                http_status=200,
+                message="ALREADY_LOGGED_OUT",
+                data=None
+            )   
 
         headers = {
             "content-type": "application/json; charset=utf-8",
@@ -161,22 +189,38 @@ class KSI_API():
             body = res.json()
             response_data = LogoutResponseBody(**body)
 
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
+            default_data = {
+                "access_token": "",
+                "access_token_token_expired": ""
+            }
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(default_data, f, ensure_ascii=False, indent=4)
+
+            return ComResponseBody(
+                status=0,
+                http_status=200,
+                message="LOGOUT_SUCCEEDED",
+                data=response_data
+            )   
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""                 
             traceback.print_exc()
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"LOGOUT_EXCEPTION: {str(e)} | {body_str}",
+                data=None
+            )                  
 
     # ==================
-    # == 해외 주식 잔고 ==
+    # == 나의 주식 잔고 ==
     # ==================
-    def get_trade_info(self):
+    def get_mystock_info(self):
         if not self.access_token:
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")
             self.logout()
             time.sleep(2)
             self.login()
@@ -207,14 +251,22 @@ class KSI_API():
             body = res.json()
             response_data = TradeResponseBody(**body)
 
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )   
             
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""                   
             traceback.print_exc()
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[get_mystock_info]: {str(e)} | {body_str}",
+                data=None
+            )                  
 
     # ==================
     # == 결제 기준 잔고 ==
@@ -224,6 +276,7 @@ class KSI_API():
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")
             self.logout()
             time.sleep(2)
             self.login()
@@ -254,15 +307,24 @@ class KSI_API():
             body = res.json()
             response_data = CBEResponseBody(**body)
             
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
+
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )   
             
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""            
             traceback.print_exc()
-
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[current_balance_by_execution]: {str(e)} | {body_str}",
+                data=None
+            )   
+        
     # ==================
     # == 계좌 잔고 조회 ==
     # ==================
@@ -271,6 +333,7 @@ class KSI_API():
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")            
             self.logout()
             time.sleep(2)
             self.login()
@@ -303,23 +366,32 @@ class KSI_API():
             response_data = AccountResponseBody(**body)
 
             response_data.output1
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )   
             
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""
             traceback.print_exc()
-
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[get_account_info]: {str(e)} | {body_str}",
+                data=None
+            )   
+        
     # ==================
     # == 매수 가능 금액 ==
     # ==================
-    def allowable_buy_money(self, OVRS_EXCG_CD:str, OVRS_ORD_UNPR:str, ITEM_CD:str):
+    def allowable_money(self, OVRS_EXCG_CD:str, OVRS_ORD_UNPR:str, ITEM_CD:str):
         if not self.access_token:
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")            
             self.logout()
             time.sleep(2)
             self.login()
@@ -352,15 +424,23 @@ class KSI_API():
             
             response_data = AllowableResponseBody(**body)
 
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
-            
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )   
+        
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""
             traceback.print_exc()    
-
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[allowable_buy_money]: {str(e)} | {body_str}",
+                data=None
+            ) 
+            
     # ==================
     # ===== 호가창 ======
     # ==================
@@ -369,6 +449,7 @@ class KSI_API():
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")                 
             self.logout()
             time.sleep(2)
             self.login()
@@ -398,15 +479,24 @@ class KSI_API():
             body = res.json()
             
             response_data = OrderBookResponseBody(**body)
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
-            
-        except Exception as e:
-            print(e)
-            traceback.print_exc()    
 
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )  
+        
+        except Exception as e:
+            body_str = f" | {body}" if 'body' in locals() else ""
+            traceback.print_exc()    
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[order_book]: {str(e)} | {body_str}",
+                data=None
+            ) 
+        
     # ==================
     # ====== 주문 =======
     # ==================
@@ -415,6 +505,7 @@ class KSI_API():
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")                     
             self.logout()
             time.sleep(2)
             self.login()
@@ -447,27 +538,36 @@ class KSI_API():
             res = requests.post(url=url, headers=asdict(headers), json=asdict(data), timeout=10)
             
             body = res.json()
- 
+            
             response_data = OrderResponseBody(**body)
 
-            
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )  
             
         except Exception as e:
-            print(e)
             traceback.print_exc()
+            body_str = f" | {body}" if 'body' in locals() else ""
+
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[order]: {str(e)} | {body_str}",
+                data=None
+            )             
 
     # ==================
     # ==== 주문 취소 ====
     # ==================
-    def cancle_order(self, OVRS_EXCG_CD:str, PDNO:str, ORGN_ODNO:str, ORD_QTY:str):
+    def cancel_order(self, OVRS_EXCG_CD:str, PDNO:str, ORGN_ODNO:str, ORD_QTY:str):
         if not self.access_token:
             self.login()
 
         if not self.expired_check():
+            print("토큰 만료 재 로그인 합니다.")                   
             self.logout()
             time.sleep(2)
             self.login()
@@ -501,11 +601,20 @@ class KSI_API():
             body = res.json()
 
             response_data = CancleResponseBody(**body)
-            return {
-                "status": res.status_code,
-                "data": response_data
-            } 
+
+            return ComResponseBody(
+                status=0,
+                http_status=res.status_code,
+                message="INQUIRY_SUCCEEDED",
+                data=response_data
+            )  
             
         except Exception as e:
-            print(e)
+            body_str = f" | {body}" if 'body' in locals() else ""
             traceback.print_exc()
+            return ComResponseBody(
+                status=9001,
+                http_status=None,
+                message=f"[cancle_order]: {str(e)} | {body_str}",
+                data=None
+            )                    
